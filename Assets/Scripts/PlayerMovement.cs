@@ -1,5 +1,6 @@
-using System.IO;
+//using System.IO;
 using Unity.Netcode;
+//using UnityEditor;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -7,35 +8,57 @@ public class PlayerMovement : NetworkBehaviour
 {
     [SerializeField] private float moveSpeed = 5f;
 
+    [SerializeField] private InputActionAsset hostControls;
+    [SerializeField] private InputActionAsset clientControls;
+
     private InputAction moveAction;
 
-    private void Awake()
+    public override void OnNetworkSpawn()
     {
-        //movement input action using WASD/Arrows
-        moveAction = new InputAction("Move");
-        moveAction.AddCompositeBinding("2DVector")
-            .With("Up", "<Keyboard>/w")
-            .With("Down", "<Keyboard>/s")
-            .With("Left", "<Keyboard>/a")
-            .With("Right", "<Keyboard>/d");
+        if (!IsOwner) return;
+
+        var asset = IsHost ? hostControls : clientControls;
+        moveAction = asset.FindActionMap("Player").FindAction("Move");
+        moveAction.Enable();
+
+        //If you had one Input Action file (player controls)
+        //moveAction = playerControls.FindActionMap("Player").FindAction("Move");
+
+        //if (IsHost)
+        //{
+        //    //rebind to arrow keys for host
+        //    moveAction.ApplyBindingOverride(1, "<Keyboard>/upArrow");
+        //    moveAction.ApplyBindingOverride(2, "<Keyboard>/downArrow");
+        //    moveAction.ApplyBindingOverride(3, "<Keyboard>/leftArrow");
+        //    moveAction.ApplyBindingOverride(4, "<Keyboard>/rightArrow");
+        //}
+
+        //moveAction.Enable();
+    }
+    private void Update()
+    {
+        // Wait until network ownership is properly assigned
+        if (!IsOwner || moveAction == null) return;
+
+        Vector2 movement = moveAction.ReadValue<Vector2>();
+        Vector3 move = new Vector3(movement.x, movement.y, 0) * moveSpeed * Time.deltaTime;
+
+        // Move using RPC so server knows about it
+        MoveServerRpc(move);
+        Debug.Log($"Moving: {move}");
     }
 
-    private void OnEnable()
+    [ServerRpc]
+    private void MoveServerRpc(Vector3 move)
     {
-        moveAction.Enable();
+        transform.Translate(move);
     }
+    //transform.Translate(movement * moveSpeed * Time.deltaTime);
+    
+    
 
     private void OnDisable()
     {
-        moveAction.Disable();
-    }
-
-    private void Update()
-    {
-        // Only move if this is my own player, not other players on the network
-        if (!IsOwner) return;
-
-        Vector2 movement = moveAction.ReadValue<Vector2>();
-        transform.Translate(movement * moveSpeed * Time.deltaTime);
+        moveAction?.Disable();
     }
 }
